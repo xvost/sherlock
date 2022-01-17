@@ -14,6 +14,7 @@ __all__ = [
     'MCLock'
 ]
 
+from telnetlib import WONT
 import etcd
 import pylibmc
 import redis
@@ -57,7 +58,7 @@ class BaseLock(object):
     ...
     ...     def _acquire(self):
     ...         if self.client.get(self.lock_name) is not None:
-    ...             owner = str(uuid.uuid4()) # or anythin you want
+    ...             owner = uuid.uuid4() # or anythin you want
     ...             self.client.set(self.lock_name, owner)
     ...             self._owner = owner
     ...             if self.expire is not None:
@@ -401,6 +402,11 @@ class RedisLock(BaseLock):
 
         super(RedisLock, self).__init__(lock_name, **kwargs)
 
+        if kwargs.get('info'):
+            self.info = kwargs['info']
+        else:
+            self.info = None
+
         if self.client is None:
             self.client = redis.StrictRedis(host='localhost', port=6379, db=0)
 
@@ -418,8 +424,17 @@ class RedisLock(BaseLock):
             key = self.lock_name
         return key
 
+    @property
+    def _key_value(self):
+        value = self.client.get(self._key_name)
+        if value is None:
+            return None
+        return value.decode('utf-8')
+
     def _acquire(self):
         owner = str(uuid.uuid4())
+        if self.info:
+            owner = f'{owner};{self.info}'
         if self.expire is None:
             expire = -1
         else:
